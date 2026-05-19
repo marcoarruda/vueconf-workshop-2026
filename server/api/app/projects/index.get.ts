@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { z } from "zod";
 
 const querySchema = z.object({
@@ -13,6 +14,8 @@ export default defineEventHandler(async (event) => {
 
     const pattern = `%${q}%`;
 
+    const searchEmbedding = await embedText(q);
+
     return Project.where((eb) =>
         eb.or([
             eb("name", "ilike", pattern),
@@ -20,6 +23,10 @@ export default defineEventHandler(async (event) => {
                 "id",
                 "in",
                 eb.selectFrom("project_daily_reports").where("summary", "ilike", pattern).select("project_id"),
+            ),
+            eb("id",
+                "in",
+                eb.selectFrom("project_daily_reports").where(sql`summary_embedding <=> ${searchEmbedding}`, "<", 0.5).select("project_id"),
             ),
         ]),
     ).get();
