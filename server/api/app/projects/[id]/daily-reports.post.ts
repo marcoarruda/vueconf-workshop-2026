@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { MultiPartData } from 'h3';
+import { sql } from "kysely";
+
+const config = useRuntimeConfig()
 
 const fieldsSchema = z.object({
     report_date: z
@@ -135,10 +138,19 @@ export default defineEventHandler(async (event) => {
     }
 
     // add the daily report to the database
+    const summary_embedding_request = await ai.models.embedContent({
+        model: config.geminiEmbeddingModel,
+        contents: summary,
+        config: {
+            outputDimensionality: 768,
+        }
+    })
+    const summary_embedding = sql`${JSON.stringify(summary_embedding_request.embeddings![0]!.values!)}::vector(768)` as unknown as number[];
     const report = await ProjectDailyReport.create({
         project_id: id,
         report_date: reportDate,
         summary,
+        summary_embedding,
         photo_file_name: null,
     });
 
