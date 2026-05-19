@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MultiPartData } from 'h3';
 
 const fieldsSchema = z.object({
     report_date: z
@@ -41,7 +42,7 @@ Return an array of tag ids that are relevant to the daily report summary. Only i
     const projectDailyReportTagIds = JSON.parse(response.text ?? '')
 
     type DailyReportTagUsageInput = { daily_report_id: number; daily_report_tag_id: number }[]
-    const dailyReportTagUsageList: DailyReportTagUsageInput  = projectDailyReportTagIds.map((tagId: number) => ({
+    const dailyReportTagUsageList: DailyReportTagUsageInput = projectDailyReportTagIds.map((tagId: number) => ({
         daily_report_id: report.id,
         daily_report_tag_id: tagId,
     }));
@@ -50,6 +51,62 @@ Return an array of tag ids that are relevant to the daily report summary. Only i
         await DailyReportTagUsage.create(tagUsage);
     }))
 };
+
+const validateImageType = (image: MultiPartData) => {
+    if (!allowedImageTypes.includes(image.type ?? "")) {
+        throw createError({ statusCode: 400, statusMessage: "Photo must be an image file (jpeg, png, gif, webp)" });
+    }
+}
+
+/*
+We finished the roof, despite the rain and wet environment
+*/
+
+const validateUploadedImageContent = async (image: MultiPartData, reportSummary: string) => {
+    const contents = [
+        {
+            inlineData: {
+                mimeType: image.type,
+                data: image.data.toString("base64"),
+            }
+        },
+        {
+            text: `Is the content of the image appropriate according to the following summary? "${reportSummary}". Respond with true or false followed by a brief explanation, if false.`
+        }
+    ]
+
+    const responseImageValidation = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents,
+    })
+
+    const responseImageValidationText = responseImageValidation.text ?? ''
+
+    if (!responseImageValidationText.toLowerCase().includes("true") && !responseImageValidationText.toLowerCase().includes("false")) {
+        throw createError({ statusCode: 400, statusMessage: "Invalid response from image validation" });
+    }
+
+    const prompt = `Format the following text "${responseImageValidationText}" to the json expected: "{ isImageAppropriate: boolean, explanation: string }".`
+    const schema = z.toJSONSchema(z.object({ isImageAppropriate: z.boolean().describe('True if it is a valid image, false if not'), explanation: z.string().describe('A brief explanation if the image is not appropriate') }))
+    const responseFormat = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+            responseJsonSchema: {
+                text: {
+                    mimeType: "application/json",
+                    schema
+                }
+            },
+        }
+    })
+
+    const { isImageAppropriate, explanation } = JSON.parse(responseFormat.text ?? '{}')
+
+    if (!isImageAppropriate) {
+        throw createError({ statusCode: 400, statusMessage: `Invalid image content: ${explanation}` });
+    }
+}
 
 export default defineEventHandler(async (event) => {
     const { id } = await getValidatedRouterParams(event, paramsSchema.parse);
@@ -70,10 +127,14 @@ export default defineEventHandler(async (event) => {
 
     const photoPart = parts?.find((p) => p.name === "photo");
 
-    if (photoPart?.data && photoPart.data.length > 0 && !allowedImageTypes.includes(photoPart.type ?? "")) {
-        throw createError({ statusCode: 400, statusMessage: "Photo must be an image file (jpeg, png, gif, webp)" });
+    // image validation
+    const hasOneImageUploaded = photoPart?.data && photoPart.data.length > 0;
+    if (hasOneImageUploaded) {
+        validateImageType(photoPart);
+        await validateUploadedImageContent(photoPart, summary);
     }
 
+    // add the daily report to the database
     const report = await ProjectDailyReport.create({
         project_id: id,
         report_date: reportDate,
@@ -81,10 +142,11 @@ export default defineEventHandler(async (event) => {
         photo_file_name: null,
     });
 
-    // add related tags to the daily report
+    // add related tags to the daily report based on the summary using Gemini
     await createRelatedTagsUsage(report);
 
-    if (photoPart?.data && photoPart.data.length > 0) {
+    // save the photo to the file system after the report is created and related tags are added
+    if (hasOneImageUploaded) {
         await report.savePhoto(photoPart.data, photoPart.filename ?? "photo.jpg");
     }
 
