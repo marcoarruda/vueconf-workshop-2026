@@ -1,8 +1,6 @@
 import { z } from "zod";
 import type { MultiPartData } from 'h3';
-import { sql } from "kysely";
-
-const config = useRuntimeConfig()
+import { embedText } from "../../../../utils/embedding";
 
 const fieldsSchema = z.object({
     report_date: z
@@ -61,10 +59,6 @@ const validateImageType = (image: MultiPartData) => {
     }
 }
 
-/*
-We finished the roof, despite the rain and wet environment
-*/
-
 const validateUploadedImageContent = async (image: MultiPartData, reportSummary: string) => {
     const contents = [
         {
@@ -111,22 +105,6 @@ const validateUploadedImageContent = async (image: MultiPartData, reportSummary:
     }
 }
 
-const embedSummary = async (summary: string): Promise<number[]> => {
-    const response = await ai.models.embedContent({
-        model: config.geminiEmbeddingModel,
-        contents: summary,
-        config: {
-            outputDimensionality: config.geminiEmbeddingDimensionality,
-        }
-    })
-
-    const embeddings = response.embeddings?.[0]
-
-    const values = embeddings?.values ?? []
-
-    return sql`${JSON.stringify(values)}::vector(${config.geminiEmbeddingDimensionality})` as unknown as number[];
-}
-
 export default defineEventHandler(async (event) => {
     const { id } = await getValidatedRouterParams(event, paramsSchema.parse);
 
@@ -154,7 +132,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // add the daily report to the database
-    const summary_embedding = await embedSummary(summary);
+    const summary_embedding = await embedText(summary);
     const report = await ProjectDailyReport.create({
         project_id: id,
         report_date: reportDate,
