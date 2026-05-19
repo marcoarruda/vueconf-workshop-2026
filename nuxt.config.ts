@@ -48,6 +48,7 @@ export default defineNuxtConfig({
         dbUser: process.env.NUXT_DB_USER,
         dbPassword: process.env.NUXT_DB_PASSWORD,
         geminiApiKey: process.env.NUXT_GEMINI_API_KEY,
+        geminiEmbeddingModel: process.env.NUXT_GEMINI_EMBEDDING_MODEL,
     },
     vite: {
         plugins: [tailwindcss()],

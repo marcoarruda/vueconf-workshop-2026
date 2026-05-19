@@ -100,6 +100,7 @@ export interface ProjectDailyReportsTable {
     project_id: number;
     report_date: ColumnType<Date, string, string>;
     summary: string;
+    summary_embedding: number[];
     photo_file_name: string | null;
     created_at: ColumnType<Date, string | undefined, never>;
     updated_at: ColumnType<Date, string | undefined, never>;
