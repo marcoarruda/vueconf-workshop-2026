@@ -151,7 +151,7 @@ async function removeMaterial(usageId: number) {
                 </template>
                 <template #content>
                     <p class="leading-relaxed whitespace-pre-wrap text-surface-700 dark:text-surface-300">
-                        {{ report.summary }}
+                        {{ report.attributes.summary }}
                     </p>
                 </template>
             </Card>
