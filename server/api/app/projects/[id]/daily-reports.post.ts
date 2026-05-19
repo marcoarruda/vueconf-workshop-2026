@@ -26,8 +26,6 @@ ${existingTags.map((t) => `- [# ${t.id}] ${t.name}`).join("\n")}
 Return an array of tag ids that are relevant to the daily report summary. Only include tags that are explicitly relevant.
 `;
 
-    console.log(prompt);
-
     const zodValidatorTagIds = z.array(z.number().int().positive());
 
     const jsonSchema = z.toJSONSchema(zodValidatorTagIds);
@@ -40,25 +38,17 @@ Return an array of tag ids that are relevant to the daily report summary. Only i
         },
     });
 
-    console.log(response.text);
-
     const projectDailyReportTagIds = JSON.parse(response.text ?? '')
-
-    console.log(projectDailyReportTagIds.map((id: number) => {
-        return { id, name: existingTags.find((t) => t.id === id)?.name }
-    }));
 
     type DailyReportTagUsageInput = { daily_report_id: number; daily_report_tag_id: number }[]
     const dailyReportTagUsageList: DailyReportTagUsageInput  = projectDailyReportTagIds.map((tagId: number) => ({
         daily_report_id: report.id,
         daily_report_tag_id: tagId,
     }));
-    console.log(dailyReportTagUsageList)
 
     await Promise.all(dailyReportTagUsageList.map(async (tagUsage) => {
         await DailyReportTagUsage.create(tagUsage);
     }))
-
 };
 
 export default defineEventHandler(async (event) => {
