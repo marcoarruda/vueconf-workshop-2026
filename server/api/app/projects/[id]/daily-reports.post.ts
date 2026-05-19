@@ -111,6 +111,22 @@ const validateUploadedImageContent = async (image: MultiPartData, reportSummary:
     }
 }
 
+const embedSummary = async (summary: string): Promise<number[]> => {
+    const response = await ai.models.embedContent({
+        model: config.geminiEmbeddingModel,
+        contents: summary,
+        config: {
+            outputDimensionality: config.geminiEmbeddingDimensionality,
+        }
+    })
+
+    const embeddings = response.embeddings?.[0]
+
+    const values = embeddings?.values ?? []
+
+    return sql`${JSON.stringify(values)}::vector(${config.geminiEmbeddingDimensionality})` as unknown as number[];
+}
+
 export default defineEventHandler(async (event) => {
     const { id } = await getValidatedRouterParams(event, paramsSchema.parse);
 
@@ -138,14 +154,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // add the daily report to the database
-    const summary_embedding_request = await ai.models.embedContent({
-        model: config.geminiEmbeddingModel,
-        contents: summary,
-        config: {
-            outputDimensionality: 768,
-        }
-    })
-    const summary_embedding = sql`${JSON.stringify(summary_embedding_request.embeddings![0]!.values!)}::vector(768)` as unknown as number[];
+    const summary_embedding = await embedSummary(summary);
     const report = await ProjectDailyReport.create({
         project_id: id,
         report_date: reportDate,

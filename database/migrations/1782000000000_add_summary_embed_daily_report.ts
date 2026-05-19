@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 
 const EMBEDDING_MODEL = process.env.NUXT_GEMINI_EMBEDDING_MODEL as string
 const GEMINI_API_KEY = process.env.NUXT_GEMINI_API_KEY
+const GEMINI_EMBEDDING_DIMENSIONALITY = parseInt(process.env.NUXT_GEMINI_EMBEDDING_DIMENSIONALITY ?? "768", 10)
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -12,7 +13,7 @@ async function embedSummary(summary: string): Promise<number[]> {
 		model: EMBEDDING_MODEL,
 		contents: summary,
 		config: {
-			outputDimensionality: 768,
+			outputDimensionality: GEMINI_EMBEDDING_DIMENSIONALITY,
 		}
 	})
 	return response.embeddings![0].values!
@@ -20,7 +21,7 @@ async function embedSummary(summary: string): Promise<number[]> {
 
 export async function up(db: Kysely<any>): Promise<void> {
 	await db.schema.alterTable('project_daily_reports')
-		.addColumn('summary_embedding', sql`vector(768)`)
+		.addColumn('summary_embedding', sql`vector(${GEMINI_EMBEDDING_DIMENSIONALITY})`)
 		.execute();
 
 	// backfill summary_embedding for existing records
@@ -32,7 +33,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 	for (const report of reports) {
 		const embedding = await embedSummary(report.summary)
 		await db.updateTable('project_daily_reports')
-			.set({ summary_embedding: sql`${JSON.stringify(embedding)}::vector(768)` })
+			.set({ summary_embedding: sql`${JSON.stringify(embedding)}::vector(${GEMINI_EMBEDDING_DIMENSIONALITY})` })
 			.where('id', '=', report.id)
 			.execute();
 	}
